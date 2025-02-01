@@ -429,15 +429,12 @@ class Tensor:
         '''
         return flip(self, dims=dims)
 
-    def mean(self, dim=None, keepdims=False, dtype=None):
+    def mean(self, dim=None, keepdims=False):
         '''Compute the arithmetic mean along the specified axis.
         '''
-        return mean(self, dim=dim, keepdims=keepdims, dtype=dtype)
+        return mean(self, dim=dim, keepdims=keepdims)
 
-    def median(self, dim=None, keepdims=False):
-        '''Compute the median along the specified axis.
-        '''
-        return median(self, dim=dim, keepdims=keepdims)
+
 # *****************************************************************************
 
 # tensor creation functions****************************************************
@@ -1127,37 +1124,12 @@ def amax(t, dim=None, keepdims=False):
     '''
     return Amax.apply(t, dim=dim, keepdims=keepdims)
 
-
-
-def sort(t, dim=-1):
-    '''Sorts the elements of the input tensor along a given dimension 
-    in ascending order by value.
-    '''
-    xp = _get_array_module(t)
-    return as_tensor(xp.sort(t._data, axis=dim))
-
-def flip(t, dims=None):
-    '''Reverse the order of elements in an array along the given axis.
-    The shape of the tensor is preserved, but the elements are reordered.
-    t : Input tensor.
-    dims : None or int or tuple of ints, optional - axis or axes along 
-    which to flip over. The default, dims=None, will flip over all of 
-    the axes of the input tensor.
-    '''
-    xp = _get_array_module(t)
-    return as_tensor(xp.flip(t._data, axis=dims))
-
 def mean(t, dim=None, keepdims=False, dtype=None):
     '''Compute the arithmetic mean along the specified axis.
     '''
-    xp = _get_array_module(t)
-    return as_tensor(xp.mean(t._data, axis=dim, keepdims=keepdims, dtype=dtype))
+    return Mean.apply(t, dim=dim, keepdims=keepdims)
 
-def median(t, dim=None, keepdims=False):
-    '''Compute the median along the specified axis.
-    '''
-    xp = _get_array_module(t)
-    return as_tensor(xp.median(t._data, axis=dim, keepdims=keepdims))
+# implement median(), sort(), flip()
 
 # implement cat() for concetation
 
@@ -1534,6 +1506,26 @@ class Sum(Function):
             if dim is None:
                 dim = tuple(range(len(self._saved_shape)))
             self._children[0].accumulate_grad(self._accumulated_grad.unsqueeze(dim))
+
+class Mean(Function):    
+    
+    def forward(self, t, dim, keepdims):
+        result = t._data.mean(axis=dim, keepdims=keepdims, dtype=t.dtype)
+        if dim is None:
+            n = t.numel()
+        else:
+            n = t.size(dim=dim)
+        self.save_for_backward((keepdims, dim, n))
+        return as_tensor(result)
+    
+    def _backward(self):
+        if self.get_saved()[0]:
+            self._children[0].accumulate_grad(self._accumulated_grad * 1/self.get_saved()[2])
+        else:
+            dim = self.get_saved()[1]
+            if dim is None:
+                dim = tuple(range(len(self._saved_shape)))
+            self._children[0].accumulate_grad(self._accumulated_grad.unsqueeze(dim) * 1/self.get_saved()[2])
 
 
 class Maximum(Function):
